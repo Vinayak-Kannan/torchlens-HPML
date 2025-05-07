@@ -266,6 +266,25 @@ print(model_history['conv2d_3'].func_call_stack[8])
 '''
 ```
 
+## Visualizing Graph Breaks
+TorchLens also supports visualizing graph breaks, and can flexibly handle different model types from HuggingFace. See below for two different models run below
+
+```python
+from transformers import VitsModel, AutoTokenizer
+import torch
+
+model = VitsModel.from_pretrained("facebook/mms-tts-rus")
+tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-rus")
+
+text = "some example text in the Russian language"
+inputs = tokenizer(text, return_tensors="pt")
+show_model_graph(model, input_args=None, input_kwargs=inputs, vis_graph_with_dynamo_explain=True, vis_nesting_depth=10, save_only=True, vis_fileformat="svg", vis_outpath="output_pray", vis_opt="rolled", vis_direction="leftright")
+```
+
+<img src="images/vits_model_dynamo_explain.png" width=80% height=80%>
+
+Note that if the forward pass of the model uses generate as its forward pass method, pass in the parameter `model_uses_generate` as `True`
+
 ## Planned Features
 
 1) In the further future, I am considering adding functionality to not just save activations,
