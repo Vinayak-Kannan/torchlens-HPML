@@ -152,9 +152,7 @@ def render_graph(
     collapsed_modules = set()
     edges_used = set()
 
-    # print("printing dynamo_explain: ", dynamo_explain_outputs)
-    # print("printing break_reaons: ", dynamo_explain_outputs.break_reasons)
-    if dynamo_explain_outputs and dynamo_explain_outputs.break_reasons: # More edits
+    if dynamo_explain_outputs and dynamo_explain_outputs.break_reasons:
         print("Number of breaks: " + str(len(dynamo_explain_outputs.break_reasons)))
         for dynamo_explain_output in dynamo_explain_outputs.break_reasons:
             best_node_name, best_node = __align_graph_break_to_node(dynamo_explain_output.user_stack, entries_to_plot.items())
@@ -251,32 +249,6 @@ def __align_graph_break_to_node(break_frame: list[FrameSummary], nodes: dict[str
             if not best_node:
                 best_node = node
                 best_node_name = node_name
-
-
-    # if best_node_name is None:
-    #     for node_name, node in nodes:
-    #         if node.stack_trace is None:
-    #             continue
-    #         for stack_frame in node.stack_trace:
-    #             dist = abs(stack_frame.lineno - target_line)
-    #             if dist < best_dist:
-    #                 best_dist = dist
-    #                 best_node_name = node_name
-    #                 best_node = node
-
-    # for node_name, node in nodes:
-    #     if node.stack_trace is None:
-    #         continue
-    #
-    #     stack_frames: list[FrameInfo] = node.stack_trace
-    #
-    #     for stack_frame in stack_frames:
-    #         if stack_frame.filename == target_file:
-    #             dist = abs(stack_frame.lineno - target_line)
-    #             if dist < best_dist:
-    #                 best_dist = dist
-    #                 best_node_name = node_name
-    #                 best_node = node
 
     return best_node_name, best_node
 
