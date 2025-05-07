@@ -6,12 +6,12 @@ from typing import Dict, List, Set, TYPE_CHECKING, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch._dynamo   # MY ADDITION
+import torch._dynamo
 
 import graphviz
 from IPython.display import display
 from torch._dynamo.backends.debugging import ExplainOutput
-from torch._dynamo.output_graph import GraphCompileReason   # MY ADDITION
+from torch._dynamo.output_graph import GraphCompileReason
 
 from typing import Any, Dict, Optional, List, Tuple, Union
 
@@ -444,7 +444,6 @@ def _check_if_collapsed_module(node, vis_nesting_depth):
     else:
         return False
 
-# MY ADDITION: Helper function for formatting the break reason. 
 def format_break_reason(break_reason: GraphCompileReason):
         # Format the break reason string
         formatted_reason = break_reason.reason
