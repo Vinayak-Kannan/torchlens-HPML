@@ -1,11 +1,19 @@
 from collections import defaultdict
 from inspect import FrameInfo
+from pathlib import Path
 from traceback import FrameSummary
 from typing import Dict, List, Set, TYPE_CHECKING, Tuple, Union
+
+import torch
+import torch.nn as nn
+import torch._dynamo
 
 import graphviz
 from IPython.display import display
 from torch._dynamo.backends.debugging import ExplainOutput
+from torch._dynamo.output_graph import GraphCompileReason
+
+from typing import Any, Dict, Optional, List, Tuple, Union
 
 from .helper_funcs import in_notebook, int_list_to_compact_str
 from .postprocess import _roll_graph
@@ -25,7 +33,6 @@ MAX_MODULE_PENWIDTH = 5
 MIN_MODULE_PENWIDTH = 2
 PENWIDTH_RANGE = MAX_MODULE_PENWIDTH - MIN_MODULE_PENWIDTH
 COMMUTE_FUNCS = ["add", "mul", "cat", "eq", "ne"]
-
 
 def render_graph(
         self: "ModelHistory",
@@ -145,11 +152,18 @@ def render_graph(
     collapsed_modules = set()
     edges_used = set()
 
-    print("Number of breaks: " + str(len(dynamo_explain_outputs.break_reasons)))
-    for dynamo_explain_output in dynamo_explain_outputs.break_reasons:
-        best_node_name, best_node = __align_graph_break_to_node(dynamo_explain_output.user_stack, entries_to_plot.items())
-        best_node.is_graph_break_node = True
-        entries_to_plot[best_node_name] = best_node
+    if dynamo_explain_outputs and dynamo_explain_outputs.break_reasons:
+        print("Number of breaks: " + str(len(dynamo_explain_outputs.break_reasons)))
+        for dynamo_explain_output in dynamo_explain_outputs.break_reasons:
+            best_node_name, best_node = __align_graph_break_to_node(dynamo_explain_output.user_stack, entries_to_plot.items())
+            if not best_node:
+                print("No node found for break reason: " + str(dynamo_explain_output))
+                continue
+            best_node.is_graph_break_node = True
+            best_node.graph_break_reason = format_break_reason(dynamo_explain_output)
+            entries_to_plot[best_node_name] = best_node
+    else:
+        print("No dynamo explain used")
 
     for node_barcode, node in entries_to_plot.items():
         if node.is_buffer_layer and not show_buffer_layers:
@@ -178,6 +192,15 @@ def render_graph(
 
     dot.render(vis_outpath, view=(not save_only))
 
+def find_matching_stack_frame(break_frame_path, stack_frames):
+    path = Path(break_frame_path).resolve()
+    paths_to_check = [path] + list(path.parents)
+    for candidate_path in paths_to_check:
+        for stack_frame in stack_frames:
+            stack_path = Path(stack_frame.filename).resolve()
+            if stack_path == candidate_path:
+                return stack_frame
+    return None
 
 def __align_graph_break_to_node(break_frame: list[FrameSummary], nodes: dict[str, TensorLogEntry] ) -> Tuple[str, TensorLogEntry]:
     target_file = break_frame[0].filename
@@ -187,19 +210,45 @@ def __align_graph_break_to_node(break_frame: list[FrameSummary], nodes: dict[str
     best_dist = float('inf')
     best_node = None
 
-    for node_name, node in nodes.items():
+    for node_name, node in nodes:
         if node.stack_trace is None:
             continue
-
-        stack_frames: list[FrameInfo] = node.stack_trace
-
-        for stack_frame in stack_frames:
+        for stack_frame in node.stack_trace:
             if stack_frame.filename == target_file:
                 dist = abs(stack_frame.lineno - target_line)
                 if dist < best_dist:
                     best_dist = dist
                     best_node_name = node_name
                     best_node = node
+
+    if best_node_name is None:
+        import os
+        target_basename = os.path.basename(target_file)
+        for node_name, node in nodes:
+            if node.stack_trace is None:
+                continue
+            for stack_frame in node.stack_trace:
+                if os.path.basename(stack_frame.filename) == target_basename:
+                    dist = abs(stack_frame.lineno - target_line)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_node_name = node_name
+                        best_node = node
+
+    if best_node_name is None:
+        for node_name, node in nodes:
+            if node.stack_trace is None:
+                continue
+            matching_frame = find_matching_stack_frame(target_file, node.stack_trace)
+            if matching_frame:
+                dist = abs(matching_frame.lineno - target_line)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_node_name = node_name
+                    best_node = node
+            if not best_node:
+                best_node = node
+                best_node_name = node_name
 
     return best_node_name, best_node
 
@@ -268,6 +317,18 @@ def _check_if_collapsed_module(node, vis_nesting_depth):
     else:
         return False
 
+def format_break_reason(break_reason: GraphCompileReason):
+        # Format the break reason string
+        formatted_reason = break_reason.reason
+        if "builtin: print" in formatted_reason:
+            formatted_reason = f"Unsupported print statement. {formatted_reason}"
+
+        if break_reason.user_stack:
+            formatted_reason += "\n\nUser Stack:\n"
+            for frame in break_reason.user_stack:
+                formatted_reason += f"{frame.filename}:{frame.lineno}\n"
+        return formatted_reason
+
 
 def _construct_layer_node(self: "ModelHistory",
                           node,
@@ -280,6 +341,7 @@ def _construct_layer_node(self: "ModelHistory",
     node_address, node_shape, node_color = _get_node_address_shape_color(
         self, node, show_buffer_layers
     )
+
     node_bg_color = _get_node_bg_color(self, node)
 
     if node.has_input_ancestor:
@@ -300,6 +362,9 @@ def _construct_layer_node(self: "ModelHistory",
                  'shape': node_shape,
                  'ordering': 'out'
                  }
+    if node.is_graph_break_node:
+        node_args["tooltip"] = node.graph_break_reason
+
     for arg_name, arg_val in vis_node_overrides.items():
         if callable(arg_val):
             node_args[arg_name] = str(arg_val(self, node))

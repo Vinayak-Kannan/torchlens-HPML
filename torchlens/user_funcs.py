@@ -95,7 +95,8 @@ def log_forward_pass(
         vis_gradient_edge_overrides: Dict = None,
         vis_module_overrides: Dict = None,
         random_seed: Optional[int] = None,
-        vis_graph_with_dynamo_explain: bool = False
+        vis_graph_with_dynamo_explain: bool = False,
+        model_uses_generate: bool = False
 ) -> ModelHistory:
     """Runs a forward pass through a model given input x, and returns a ModelHistory object containing a log
     (layer activations and accompanying layer metadata) of the forward pass for all layers specified in which_layers,
@@ -208,7 +209,17 @@ def log_forward_pass(
         )
 
     if vis_graph_with_dynamo_explain:
-        dynamo_results = dynamo.explain(model.forward)(input_args, **(input_kwargs or {}))
+        dynamo_results = None
+        if model_uses_generate:
+            if input_args:
+                dynamo_results = dynamo.explain(model.generate)(**input_args)
+            else:
+                dynamo_results = dynamo.explain(model.generate)(**input_kwargs)
+        else:
+            if input_args:
+                dynamo_results = dynamo.explain(model.forward)(**input_args)
+            else:
+                dynamo_results = dynamo.explain(model.forward)(**input_kwargs)
         model_history.render_graph(
             vis_opt,
             vis_nesting_depth,
@@ -223,7 +234,8 @@ def log_forward_pass(
             vis_fileformat,
             vis_buffer_layers,
             vis_direction,
-            dynamo_results
+            dynamo_results,
+            model_uses_generate
         )
 
     return model_history
@@ -273,7 +285,8 @@ def show_model_graph(
         vis_buffer_layers: bool = False,
         vis_direction: str = "bottomup",
         random_seed: Optional[int] = None,
-        vis_graph_with_dynamo_explain: bool = False
+        vis_graph_with_dynamo_explain: bool = False,
+        model_uses_generate: bool = False
 ) -> None:
     """Visualize the model graph without saving any activations.
 
@@ -293,7 +306,8 @@ def show_model_graph(
         vis_buffer_layers: whether to visualize the buffer layers
         vis_direction: either 'bottomup', 'topdown', or 'leftright'
         random_seed: which random seed to use in case model involves randomness
-
+        vis_graph_with_dynamo_explain: whether to visualize the graph with dynamo explain visuals
+        model_uses_generate: flag for whether to run forward pass of model supported with generate function
     Returns:
         Nothing.
     """
@@ -318,7 +332,17 @@ def show_model_graph(
     )
 
     if vis_graph_with_dynamo_explain:
-        dynamo_results = dynamo.explain(model.forward)(input_args, **(input_kwargs or {}))
+        dynamo_results = None
+        if model_uses_generate:
+            if input_args:
+                dynamo_results = dynamo.explain(model.generate)(**input_args)
+            else:
+                dynamo_results = dynamo.explain(model.generate)(**input_kwargs)
+        else:
+            if input_args is not None:
+                dynamo_results = dynamo.explain(model.forward)(**input_args)
+            else:
+                dynamo_results = dynamo.explain(model.forward)(**input_kwargs)
         model_history.render_graph(
             vis_opt,
             vis_nesting_depth,
