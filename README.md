@@ -20,6 +20,7 @@ show_model_graph(model, input_args=None, input_kwargs=inputs, vis_graph_with_dyn
 ```
 
 The output is below:
+
 <img src="images/vits_model_dynamo_explain.png" width=80% height=80%>
 
 
